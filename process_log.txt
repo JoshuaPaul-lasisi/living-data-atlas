@@ -22,3 +22,6 @@ core → final analytics-ready tables
 
 ops → logs, monitoring, etc.
 
+It's just so we separate the different types of data logically, prevent table-name collisions cos we could have users table in staging and core, and to simplify permissions
+It also allows us manage this project when it scales.
+
