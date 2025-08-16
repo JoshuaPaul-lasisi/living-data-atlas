@@ -1,0 +1,4 @@
+Created the repo and cloned it using vscode
+
+then created an env for the postgre
+
