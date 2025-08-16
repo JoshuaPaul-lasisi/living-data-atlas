@@ -12,6 +12,9 @@ THen I used pgadmin to create the server using the details in the .env file afte
 Apparently, 
 I need to create schemas and base tables since my database is empty. I have created the database while registering the server on pgadmin.
 
+The goal is:
+what came in → cleaned → truth → meta/monitoring.
+
 These are the schemas. They should keep things tidy this way:
 
 raw → unprocessed API dumps
@@ -25,3 +28,13 @@ ops → logs, monitoring, etc.
 It's just so we separate the different types of data logically, prevent table-name collisions cos we could have users table in staging and core, and to simplify permissions
 It also allows us manage this project when it scales.
 
+Next I created the tables for the core schema - 4 in total
+- economic indicator
+- air quality
+- weather
+- alerts
+
+Then one table for the monitoring in the ops schema
+- ingestion log
+
+These should be able to sort out the MVP before we go for robustness later
