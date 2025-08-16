@@ -12,3 +12,13 @@ THen I used pgadmin to create the server using the details in the .env file afte
 Apparently, 
 I need to create schemas and base tables since my database is empty. I have created the database while registering the server on pgadmin.
 
+These are the schemas. They should keep things tidy this way:
+
+raw → unprocessed API dumps
+
+staging → cleaned but not final
+
+core → final analytics-ready tables
+
+ops → logs, monitoring, etc.
+
