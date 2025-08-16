@@ -43,4 +43,14 @@ These should be able to sort out the MVP before we go for robustness later
 And before I forget, I need to version my sql too so I'll dump my schema into a file and commit it.
 
 Command:
+FOr the schema dump:
 docker exec -t atlas_db pg_dump -U joshua -s atlas_db > schema.sql
+
+For the full dump i.e. schema and data:
+docker exec -t atlas_db pg_dump -U joshua atlas_db > full_dump.sql
+
+For a specific table:
+docker exec -t atlas_db pg_dump -U joshua -t core.econ_daily atlas_db > econ_daily.sql
+
+For only data without schema:
+docker exec -t atlas_db pg_dump -U joshua --data-only atlas_db > data_dump.sql
