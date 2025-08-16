@@ -1,0 +1,14 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "server": "localhost",
+            "port": 5433,
+            "askForPassword": true,
+            "driver": "PostgreSQL",
+            "database": "atlas_db",
+            "username": "joshua",
+            "name": "Atlas DB"
+        }
+    ]
+}
