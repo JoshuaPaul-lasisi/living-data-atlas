@@ -2,3 +2,4 @@ Created the repo and cloned it using vscode
 
 then created an env for the postgre
 
+then we created a docker compose for the postgresql databse and pgadmin - making two services
