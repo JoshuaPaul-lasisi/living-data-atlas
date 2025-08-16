@@ -3,3 +3,12 @@ Created the repo and cloned it using vscode
 then created an env for the postgre
 
 then we created a docker compose for the postgresql databse and pgadmin - making two services
+
+next, 
+we changee the port to 5433 since I already have pgadmin on my pc and it is routed to 5432 already.
+
+THen I used pgadmin to create the server using the details in the .env file after loading my docker up.
+
+Apparently, 
+I need to create schemas and base tables since my database is empty. I have created the database while registering the server on pgadmin.
+
