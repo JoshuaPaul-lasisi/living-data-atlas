@@ -4,6 +4,7 @@ import pandas as pd
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
 from datetime import datetime
+import json
 
 # Load environment variables
 load_dotenv()
@@ -37,12 +38,12 @@ def normalize(data, indicator_name):
     for d in data:
         if d["value"] is not None:
             records.append({
-                "date": f"{d['date']}-01-01",   # year → convert to date
+                "date": f"{d['date']}-01-01",
                 "indicator": indicator_name,
                 "region": d["country"]["id"],
                 "value": d["value"],
                 "source": "World Bank",
-                "meta": {"indicator": d["indicator"]["id"]}
+                "meta": json.dumps({"indicator": d["indicator"]["id"]})
             })
     return pd.DataFrame(records)
 
@@ -52,8 +53,13 @@ def load_to_db(df, table="econ_daily"):
 
     with engine.begin() as conn:
         conn.execute(
-            "INSERT INTO ops.ingestion_log (source, status, records, message) VALUES (%s, %s, %s, %s)",
-            ("World Bank", "success", len(df), "Inserted records successfully")
+            "INSERT INTO ops.ingestion_log (source, status, records, message) VALUES (:source, :status, :records, :message)",
+            {
+                "source": "World Bank",
+                "status": "success",
+                "records": len(df),
+                "message": "Inserted records successfully"
+            }
         )
 
 if __name__ == "__main__":

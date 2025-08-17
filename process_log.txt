@@ -54,3 +54,18 @@ docker exec -t atlas_db pg_dump -U joshua -t core.econ_daily atlas_db > econ_dai
 
 For only data without schema:
 docker exec -t atlas_db pg_dump -U joshua --data-only atlas_db > data_dump.sql
+
+
+
+After writing the etl script for worldbank loader, I faced an issue with my normalization because I tried to insert a python dictionary into postgresql
+
+so stupid
+
+so I had to alter that econ table's meta column to be type JSONB so I can convert the dictionary to JSON string.
+
+We'll see how that goes
+
+I ran it now and sqlalchemy is asking for named params when I passed the values directly.
+I'll change that.
+
+It works now.
