@@ -69,3 +69,10 @@ I ran it now and sqlalchemy is asking for named params when I passed the values 
 I'll change that.
 
 It works now.
+
+Only that when I run it the second time, the PKs are preventing reloading. So I'll set it to ignore duplicates.
+But I'm thinkking, what if worldbank updates the data? Doesn't that mean that I'll have the old one that they must have confirmed to be wrong or obsolete?
+
+Maybe I should set it to update instead of ignore, then I'll add an updated column to the econ table so we can see when it was updated.
+
+I added error handling to it so if there's any issue I'll see it on my logging table

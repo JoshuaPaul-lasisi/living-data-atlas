@@ -1,10 +1,12 @@
 import os
 import requests
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, Table, MetaData, text
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timezone
+from sqlalchemy.dialects.postgresql import insert
 import json
+
 
 # Load environment variables
 load_dotenv()
@@ -48,19 +50,56 @@ def normalize(data, indicator_name):
     return pd.DataFrame(records)
 
 # --- Step 3: Load into Postgres ---
-def load_to_db(df, table="econ_daily"):
-    df.to_sql(table, engine, schema="core", if_exists="append", index=False)
+metadata = MetaData(schema="core")
+econ_daily = Table("econ_daily", metadata, autoload_with=engine)
 
-    with engine.begin() as conn:
-        conn.execute(
-            "INSERT INTO ops.ingestion_log (source, status, records, message) VALUES (:source, :status, :records, :message)",
-            {
-                "source": "World Bank",
-                "status": "success",
-                "records": len(df),
-                "message": "Inserted records successfully"
-            }
-        )
+def load_to_db(df, table=econ_daily):
+    try:
+        with engine.begin() as conn:
+            for _, row in df.iterrows():
+                stmt = insert(table).values(
+                    date=row["date"],
+                    indicator=row["indicator"],
+                    region=row["region"],
+                    value=row["value"],
+                    source=row["source"],
+                    meta=row["meta"]
+                )
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["date", "indicator", "region"],
+                    set_={
+                        "value": row["value"],
+                        "source": row["source"],
+                        "meta": row["meta"],
+                        "updated_at": datetime.now(timezone.utc)
+                    }
+                )
+                conn.execute(stmt)
+
+            # ✅ success log
+            conn.execute(
+                text("INSERT INTO ops.ingestion_log (source, status, records, message) VALUES (:source, :status, :records, :message)"),
+                {
+                    "source": "World Bank",
+                    "status": "success",
+                    "records": len(df),
+                    "message": "Upsert completed"
+                }
+            )
+    except Exception as e:
+        with engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO ops.ingestion_log (source, status, records, message) VALUES (:source, :status, :records, :message)"),
+                {
+                    "source": "World Bank",
+                    "status": "failed",
+                    "records": 0,
+                    "message": str(e)
+                }
+            )
+        raise
+
+
 
 if __name__ == "__main__":
     indicators = {
