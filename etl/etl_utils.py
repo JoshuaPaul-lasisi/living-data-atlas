@@ -2,11 +2,24 @@ from datetime import datetime, timezone
 from sqlalchemy import create_engine, text
 import pandas as pd
 import os
+from dotenv import load_dotenv
+import json
+
+# Load environment variables from .env
+load_dotenv()
+
+DB_USER = os.getenv("POSTGRES_USER")
+DB_PASS = os.getenv("POSTGRES_PASSWORD")
+DB_NAME = os.getenv("POSTGRES_DB")
+DB_PORT = os.getenv("DB_PORT", "5433")
+DB_HOST = os.getenv("DB_HOST", "localhost")
+
+if not all([DB_USER, DB_PASS, DB_NAME]):
+    raise RuntimeError("❌ Database credentials are missing. Check your .env file.")
 
 # Shared DB engine
 engine = create_engine(
-    f"postgresql+psycopg2://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}"
-    f"@localhost:5433/{os.getenv('POSTGRES_DB')}"
+    f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 
 def load_to_db(df: pd.DataFrame, table: str, source: str, schema: str = "core"):
@@ -30,7 +43,7 @@ def load_to_db(df: pd.DataFrame, table: str, source: str, schema: str = "core"):
                 "region": row["region"],
                 "value": row["value"],
                 "source": source,
-                "meta": row["meta"],
+                "meta": json.dumps(row.get("meta", {})),
                 "updated_at": datetime.now(timezone.utc)
             })
 

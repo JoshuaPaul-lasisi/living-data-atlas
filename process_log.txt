@@ -82,3 +82,8 @@ I added error handling to it so if there's any issue I'll see it on my logging t
 
 Next question: Can't I generalize the loading and ingestion process? Let's see.
 
+And I blew it!
+
+No user! Seems I should have called my dotenv in the utils script.
+
+Okay, we're good now.
