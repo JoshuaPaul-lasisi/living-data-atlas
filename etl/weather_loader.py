@@ -2,7 +2,7 @@
 import requests
 import pandas as pd
 from datetime import datetime, timezone
-from etl.etl_utils import load_to_db, log_ingestion
+from etl_utils import load_to_db, log_ingestion
 
 source = "Open-Meteo"
 
