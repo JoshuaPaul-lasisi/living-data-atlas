@@ -110,3 +110,13 @@ The api i used for OpenAQ needs fixing.
 
 I'll just do a loop instead for both just for uniformity and to increase the value of this work.
 
+As you would expect, I messed it up. the api queries are now both messed up
+The error shows that the city filter for the air quality loader now useds coordinates and the weather loader uses csv in a single param
+
+Let's fix that up.
+
+I'm having repeated issues with the APIs 
+I realised that I had been using v2 instead of v3 forthe air quality loader.
+I've also standardized the three core tables so they all have the same columns. Life should not be hard and stressful.
+
+The weather loader works now, but i need authentication to access OpenAQ
