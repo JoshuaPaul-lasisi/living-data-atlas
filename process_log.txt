@@ -97,3 +97,10 @@ Okay, we're good now.
 Day 3
 
 I just added docstrings and comments to the etl scripts so it is more easily understandable.
+
+Now, I'll create the air quality and weather loaders and test them with my utility script and see how they fare.
+
+It should work though. I'm not a goat, I hop.
+
+Damn! I referenced my utility script like I was outside the etl folder.
+
