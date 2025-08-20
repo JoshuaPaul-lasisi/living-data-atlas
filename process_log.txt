@@ -56,7 +56,10 @@ For only data without schema:
 docker exec -t atlas_db pg_dump -U joshua --data-only atlas_db > data_dump.sql
 
 
+---
+---
 
+Day 2
 After writing the etl script for worldbank loader, I faced an issue with my normalization because I tried to insert a python dictionary into postgresql
 
 so stupid
@@ -87,3 +90,10 @@ And I blew it!
 No user! Seems I should have called my dotenv in the utils script.
 
 Okay, we're good now.
+
+---
+---
+
+Day 3
+
+I just added docstrings and comments to the etl scripts so it is more easily understandable.

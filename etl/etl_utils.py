@@ -8,23 +8,37 @@ import json
 # Load environment variables from .env
 load_dotenv()
 
+# Read DB connection params
 DB_USER = os.getenv("POSTGRES_USER")
 DB_PASS = os.getenv("POSTGRES_PASSWORD")
 DB_NAME = os.getenv("POSTGRES_DB")
-DB_PORT = os.getenv("DB_PORT", "5433")
+DB_PORT = os.getenv("DB_PORT", "5433")   # Default to 5433 if not set
 DB_HOST = os.getenv("DB_HOST", "localhost")
 
 if not all([DB_USER, DB_PASS, DB_NAME]):
+    # Fail early if credentials are missing
     raise RuntimeError("❌ Database credentials are missing. Check your .env file.")
 
-# Shared DB engine
+# Shared SQLAlchemy engine (Postgres)
 engine = create_engine(
     f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 
+
 def load_to_db(df: pd.DataFrame, table: str, source: str, schema: str = "core"):
     """
-    Generic loader with upsert (date, indicator, region as PK).
+    Insert a DataFrame into a Postgres table with upsert behavior.
+
+    Args:
+        df (pd.DataFrame): Data to insert. Must contain:
+            - date, indicator, region, value, meta
+        table (str): Target table name.
+        source (str): Source label (used in table + logs).
+        schema (str): Target schema. Defaults to "core".
+
+    Notes:
+        - Uses `ON CONFLICT` to update existing rows (deduplication).
+        - Automatically updates the `updated_at` timestamp.
     """
     with engine.begin() as conn:
         for _, row in df.iterrows():
@@ -47,9 +61,20 @@ def load_to_db(df: pd.DataFrame, table: str, source: str, schema: str = "core"):
                 "updated_at": datetime.now(timezone.utc)
             })
 
+
 def log_ingestion(source: str, status: str, records: int, message: str = ""):
     """
-    Logs ingestion attempts into ops.ingestion_log
+    Log the outcome of a data ingestion run into `ops.ingestion_log`.
+
+    Args:
+        source (str): Data source name (e.g. "World Bank").
+        status (str): "success" or "fail".
+        records (int): Number of records processed.
+        message (str): Optional extra details.
+
+    Notes:
+        - Helps track pipeline runs across different data sources.
+        - `ops.ingestion_log` should exist with proper schema.
     """
     with engine.begin() as conn:
         stmt = text("""
