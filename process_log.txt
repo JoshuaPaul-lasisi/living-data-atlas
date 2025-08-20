@@ -104,3 +104,9 @@ It should work though. I'm not a goat, I hop.
 
 Damn! I referenced my utility script like I was outside the etl folder.
 
+Didn't work this time too.
+Turns out Open-Meteo doesn’t support year-long ranges in one request. I need to give shorter windows. Let's go with a month for the weather loader.
+The api i used for OpenAQ needs fixing.
+
+I'll just do a loop instead for both just for uniformity and to increase the value of this work.
+
