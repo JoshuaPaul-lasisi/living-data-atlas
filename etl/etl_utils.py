@@ -4,16 +4,19 @@ import pandas as pd
 import os
 from dotenv import load_dotenv
 import json
+from pathlib import Path
 
 # Load environment variables from .env
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent.parent
+dotenv_path = BASE_DIR/".env"
+load_dotenv(dotenv_path=dotenv_path)
 
 # Read DB connection params
 DB_USER = os.getenv("POSTGRES_USER")
 DB_PASS = os.getenv("POSTGRES_PASSWORD")
 DB_NAME = os.getenv("POSTGRES_DB")
-DB_PORT = os.getenv("DB_PORT", "5433")   # Default to 5433 if not set
-DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("POSTGRES_PORT", "5433") 
+DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
 
 if not all([DB_USER, DB_PASS, DB_NAME]):
     # Fail early if credentials are missing
@@ -23,6 +26,9 @@ if not all([DB_USER, DB_PASS, DB_NAME]):
 engine = create_engine(
     f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
+
+# Centralized access to API keys
+OPENAQ_API_KEY = os.getenv("OPENAQ_API_KEY")
 
 
 def load_to_db(df: pd.DataFrame, table: str, source: str, schema: str = "core"):
