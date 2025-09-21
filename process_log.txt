@@ -18,3 +18,4 @@ this is my checklist for today:
 1924HRS
 I've been struggling with the AWS verification: text and call verifications have not been working.
 I will have to do it locally pending when I can add it to cloud.
+Okay, I've done that now. I think we're good for day one's requirements. The test dumping was done locally, instead of on cloud since cloud is still delaying.
