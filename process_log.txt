@@ -14,3 +14,7 @@ this is my checklist for today:
 
  Test dumping dummy JSON to s3://lda-raw/test/
 
+21.09.2025
+1924HRS
+I've been struggling with the AWS verification: text and call verifications have not been working.
+I will have to do it locally pending when I can add it to cloud.

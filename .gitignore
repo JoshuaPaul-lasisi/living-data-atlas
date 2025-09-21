@@ -1,1 +1,21 @@
+# Environment
+venv/
 .env
+.env.local
+
+# Data
+data/raw/
+data/processed/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
