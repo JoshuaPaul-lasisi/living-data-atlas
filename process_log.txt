@@ -14,8 +14,20 @@ this is my checklist for today:
 
  Test dumping dummy JSON to s3://lda-raw/test/
 
+
+
+
 21.09.2025
 1924HRS
+
 I've been struggling with the AWS verification: text and call verifications have not been working.
 I will have to do it locally pending when I can add it to cloud.
 Okay, I've done that now. I think we're good for day one's requirements. The test dumping was done locally, instead of on cloud since cloud is still delaying.
+
+So, since I don't have access to aws for now I'll use postgres for my database and link it to s3 later when it works
+
+
+
+25.09.2025
+2137HRS
+
