@@ -1,99 +1,109 @@
-import os
-import requests
+import time
+from datetime import datetime, timezone
+
 import pandas as pd
-from etl_utils import load_to_db, log_ingestion, OPENAQ_API_KEY
-from dotenv import load_dotenv
+import requests
 
-# Load environment variables
-load_dotenv()
+from config import CITIES, OPENAQ_RADIUS_M
+from etl_utils import OPENAQ_API_KEY, load_observations, log_ingestion
 
-SOURCE = "OpenAQ"
 BASE_URL = "https://api.openaq.org/v3"
+SOURCE = "OpenAQ"
+REQUEST_PAUSE_S = 0.3  # be polite to the free-tier rate limit
 
-print("Using API key:", os.getenv("OPENAQ_API_KEY"))
+
+def _headers():
+    return {"X-API-Key": OPENAQ_API_KEY}
 
 
-def fetch_locations(lat, lon, distance=10000, limit=100):
-    """
-    Fetch all monitoring stations near given coordinates.
-    """
-    headers = {"X-API-Key": OPENAQ_API_KEY}
-    params = {"coordinates": f"{lat},{lon}", "distance": distance, "limit": limit}
-    r = requests.get(f"{BASE_URL}/locations", params=params, headers=headers)
+def fetch_locations(lat: float, lon: float, radius: int = OPENAQ_RADIUS_M, limit: int = 50) -> list:
+    """Fetch monitoring stations near given coordinates, following pagination."""
+    results, page = [], 1
+    while True:
+        params = {"coordinates": f"{lat},{lon}", "radius": radius, "limit": limit, "page": page}
+        r = requests.get(f"{BASE_URL}/locations", params=params, headers=_headers(), timeout=30)
+        r.raise_for_status()
+        batch = r.json().get("results", [])
+        results.extend(batch)
+        if len(batch) < limit:
+            break
+        page += 1
+        time.sleep(REQUEST_PAUSE_S)
+    return results
+
+
+def fetch_latest(location_id: int) -> list:
+    """Fetch the latest reading per sensor for a given location."""
+    r = requests.get(f"{BASE_URL}/locations/{location_id}/latest", headers=_headers(), timeout=30)
     r.raise_for_status()
     return r.json().get("results", [])
 
 
-def fetch_measurements(location_id, limit=100):
+def normalize_location(location: dict, latest: list, region: str) -> pd.DataFrame:
     """
-    Fetch paginated measurements for a given location ID.
+    Normalize one location's latest sensor readings into core.observations rows.
+    Each location's `sensors` list maps sensor id -> parameter, which `latest`
+    readings reference only by sensorsId.
     """
-    headers = {"X-API-Key": OPENAQ_API_KEY}
-    all_results, page = [], 1
+    sensor_meta = {
+        s["id"]: {"parameter": s.get("parameter", {}).get("name"), "unit": s.get("parameter", {}).get("units")}
+        for s in location.get("sensors", [])
+    }
 
-    while True:
-        params = {"location_id": location_id, "limit": limit, "page": page}
-        r = requests.get(f"{BASE_URL}/measurements", params=params, headers=headers)
-        r.raise_for_status()
-        data = r.json().get("results", [])
-        if not data:
-            break
-
-        all_results.extend(data)
-        if len(data) < limit:  # last page
-            break
-        page += 1
-
-    return all_results
-
-
-def normalize_measurements(raw: list, region="NG-LAG"):
-    """
-    Normalize OpenAQ measurements into rows for DB.
-    Each pollutant becomes a row: (date, indicator, value, region, meta).
-    """
     rows = []
-    for m in raw:
+    for reading in latest:
+        sensor_id = reading.get("sensorsId")
+        meta = sensor_meta.get(sensor_id, {})
+        parameter = meta.get("parameter")
+        value = reading.get("value")
+        dt = reading.get("datetime", {}).get("utc")
+        if not parameter or value is None or not dt:
+            continue
         rows.append({
-            "date": m.get("date", {}).get("utc", "").split("T")[0],
-            "indicator": m.get("parameter"),
+            "date": dt.split("T")[0],
+            "indicator": parameter,
             "region": region,
-            "value": m.get("value"),
+            "value": value,
             "meta": {
-                "unit": m.get("unit"),
-                "location": m.get("location", {}).get("name"),
-                "coords": m.get("coordinates", {})
-            }
+                "unit": meta.get("unit"),
+                "location": location.get("name"),
+                "location_id": location.get("id"),
+                "sensor_id": sensor_id,
+            },
         })
     return pd.DataFrame(rows)
 
 
-if __name__ == "__main__":
-    try:
-        # Step 1: Find all monitoring stations near Lagos
-        locations = fetch_locations(6.5244, 3.3792)  # Lagos coords
-        print(f"📍 Found {len(locations)} monitoring stations near Lagos")
+def run() -> int:
+    frames = []
+    failures = []
 
-        # Step 2: Fetch measurements for each station
-        all_measurements = []
+    for c in CITIES:
+        try:
+            locations = fetch_locations(c["lat"], c["lon"])
+        except Exception as e:
+            failures.append(f"{c['city']} (locations): {e}")
+            continue
+
         for loc in locations:
-            loc_id = loc["id"]
-            print(f"⏳ Fetching measurements for station {loc_id} ({loc['name']})")
-            ms = fetch_measurements(loc_id)
-            all_measurements.extend(ms)
+            try:
+                latest = fetch_latest(loc["id"])
+                frames.append(normalize_location(loc, latest, c["region"]))
+                time.sleep(REQUEST_PAUSE_S)
+            except Exception as e:
+                failures.append(f"{c['city']}/{loc.get('name')}: {e}")
 
-        # Step 3: Normalize
-        df = normalize_measurements(all_measurements, region="NG-LAG")
+    df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    n = load_observations(df, source=SOURCE)
 
-        # Step 4: Load into DB
-        if not df.empty:
-            load_to_db(df, table="air_quality_daily", source=SOURCE, schema="core")
-            log_ingestion(SOURCE, "success", len(df), "Air quality data ingested")
-            print(f"✅ {len(df)} air quality records loaded")
-        else:
-            log_ingestion(SOURCE, "empty", 0, "No data returned")
-            print("⚠️ No air quality data returned")
+    if failures:
+        log_ingestion(SOURCE, "partial" if n else "fail", n, "; ".join(failures)[:2000])
+    else:
+        log_ingestion(SOURCE, "success", n, f"{len(CITIES)} cities scanned")
 
-    except Exception as e:
-        log_ingestion(SOURCE, "failure", 0, str(e))
-        raise
+    return n
+
+
+if __name__ == "__main__":
+    count = run()
+    print(f"Air quality: {count} rows upserted into core.observations")

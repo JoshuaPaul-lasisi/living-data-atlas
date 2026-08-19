@@ -1,0 +1,100 @@
+# Process & architecture notes
+
+This documents what changed in the 2026-08-19 rebuild, and why. Read it
+alongside `process_log.txt`, which is the original journal from when this
+was a local-only Docker project.
+
+## Starting point
+
+Before this pass, the project had:
+
+- A `docker-compose.yml` running Postgres + pgAdmin locally.
+- A schema (`sql/schema.sql`) with four domain-specific `core` tables:
+  `econ_daily`, `weather_daily`, `air_quality_daily`, `alerts`, plus
+  `ops.ingestion_log`.
+- Three loader scripts (World Bank, Open-Meteo, OpenAQ) sharing a
+  `load_to_db()`/`log_ingestion()` helper in `etl_utils.py`.
+
+Two problems made this not actually runnable end to end:
+
+1. **A committed secret.** `.env` — containing a real Postgres password and
+   a live OpenAQ API key — was tracked in git and pushed to GitHub across
+   several commits. That key has to be treated as compromised regardless of
+   what we do to the repo going forward.
+2. **A schema/loader mismatch.** `weather_loader.py` and
+   `airquality_loader.py` both called `load_to_db()` writing long-format
+   rows (`date, indicator, region, value, source, meta`), but the actual
+   `core.weather_daily` and `core.air_quality_daily` tables in
+   `schema.sql` were wide-format (`temp_c, precip_mm, humidity...` /
+   `pm25, pm10, aqi...`). Running those loaders against that schema would
+   have failed on an `INSERT` column mismatch. Only `econ_daily` — which
+   happened to already be long-format — actually matched what the code wrote.
+
+## Why the infrastructure changed
+
+The stated goal for this pass was to stop depending on a machine at home
+(unreliable power/internet) and to stop hand-operating the pipeline. That
+rules out "run Postgres and a cron job on my laptop" outright. The
+alternative needed to be: free or near-free, needs no server you manage, and
+usable with accounts you already have (Supabase, Streamlit, Vercel).
+
+- **Supabase over self-hosted Postgres**: same Postgres underneath, so the
+  schema and SQLAlchemy code don't change in kind — only the connection
+  string. Free tier is a real always-on Postgres instance, not a toy.
+- **GitHub Actions over a hosted scheduler (Airflow, a VPS cron, etc.)**:
+  the code already lives in a GitHub repo; Actions' free `schedule:` trigger
+  needs no separate account, no server, and gives real CI/CD exposure (the
+  cloud/pipeline experience noted as a gap in `process_log.txt`).
+- **Streamlit Community Cloud over Vercel for the dashboard**: the dashboard
+  needs to run Python, hold a live DB connection, and render Plotly charts —
+  Streamlit Cloud does this natively from a GitHub repo with zero glue code.
+  Vercel is a better fit for a future static landing page than for a
+  stateful Python+Postgres dashboard, so it's left out of the pipeline for now.
+
+## Why the schema was consolidated
+
+Rather than fix each wide table to match its loader, all three domains now
+write into one long/tidy table: `core.observations(date, indicator, region,
+value, source, meta, updated_at)`, primary-keyed on
+`(date, indicator, region, source)`.
+
+This directly answers a question already asked in the process log ("Can't I
+generalize the loading and ingestion process?"): with one shape, `load_observations()`
+in `etl_utils.py` is a single generic upsert every loader calls, and adding a
+new source (CBN, NGX, a public-sentiment feed) never requires a migration —
+just a new `indicator` string. The cost is that querying "give me
+temperature and precipitation side by side" needs a pivot rather than a
+plain `SELECT *`; the dashboard's query layer absorbs that.
+
+## What changed in each loader
+
+- **`worldbank_loader.py`**: now loops over a set of indicators
+  (`etl/config.py`) — GDP, inflation, unemployment, population, poverty,
+  FX rate — instead of just GDP, and moved to `https` for the API call.
+- **`weather_loader.py`**: was hardcoded to fetch January 2024 for Abuja
+  only, once. It now pulls a rolling 10-day window for six cities on every
+  run; re-running the same window is safe because of the upsert, which also
+  covers Open-Meteo's short reporting lag.
+- **`airquality_loader.py`**: moved to OpenAQ v3's `/locations` +
+  `/locations/{id}/latest` pattern across the same six cities, with each
+  city/location wrapped in its own try/except so one bad station doesn't
+  drop the whole run. This is a "latest reading per run" model, not a true
+  historical daily aggregate — OpenAQ coverage in Nigeria is sparse enough
+  that a daily-aggregate endpoint would return empty for most stations most
+  days. Revisit if/when OpenAQ station density in Nigeria improves.
+
+All three `normalize()` functions were unit-tested offline against
+hand-built sample payloads shaped like each API's real response (see the
+assertions run during this build) before being wired to the database.
+
+## Known limitations / next steps
+
+- No backfill script yet — loaders only pull recent/current data. Historical
+  weather and air-quality backfill would need a separate one-off script.
+- GitHub Actions free-tier cron can run a few minutes late; not a problem
+  for daily granularity.
+- `core.alerts` exists in the schema but nothing writes to it yet — that's
+  the natural home for an anomaly-detection layer once there's enough data
+  in `core.observations` to detect anomalies against.
+- CBN and NGX (the financial-market sources from the original plan) aren't
+  wired up yet; they'd follow the same loader pattern.

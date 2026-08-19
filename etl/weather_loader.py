@@ -1,70 +1,85 @@
-import requests
-import pandas as pd
 from datetime import date, timedelta
-from etl_utils import load_to_db, log_ingestion
 
+import pandas as pd
+import requests
+
+from config import CITIES
+from etl_utils import load_observations, log_ingestion
+
+ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 SOURCE = "Open-Meteo"
+DAILY_VARS = ["temperature_2m_max", "temperature_2m_min", "precipitation_sum"]
+
+# Open-Meteo's archive has a short reporting lag; pulling the last N days on
+# every run (rather than just "yesterday") means a late-arriving day still
+# gets picked up on the next scheduled run, via upsert.
+ROLLING_WINDOW_DAYS = 10
+
 
 def fetch_weather(lat: float, lon: float, start: str, end: str) -> dict:
-    """
-    Fetch historical daily weather data from Open-Meteo archive API.
-    """
-    url = "https://archive-api.open-meteo.com/v1/archive"
+    """Fetch historical daily weather data from the Open-Meteo archive API."""
     params = {
         "latitude": lat,
         "longitude": lon,
         "start_date": start,
         "end_date": end,
-        "daily": ["temperature_2m_max","temperature_2m_min","precipitation_sum"],
+        "daily": DAILY_VARS,
         "timezone": "UTC",
     }
-    r = requests.get(url, params=params)
+    r = requests.get(ARCHIVE_URL, params=params, timeout=30)
     r.raise_for_status()
     return r.json()
 
+
 def normalize(raw: dict, region: str) -> pd.DataFrame:
-    """
-    Normalize Open-Meteo weather JSON into our econ_daily-like format.
-    """
-    dates = raw["daily"]["time"]
-    records = []
-
+    """Normalize Open-Meteo weather JSON into core.observations rows."""
+    daily = raw.get("daily", {})
+    dates = daily.get("time", [])
+    rows = []
     for i, d in enumerate(dates):
-        records.append({
-            "date": d,
-            "indicator": "temp_max_c",
-            "region": region,
-            "value": raw["daily"]["temperature_2m_max"][i],
-            "meta": {"source_var": "temperature_2m_max"}
-        })
-        records.append({
-            "date": d,
-            "indicator": "temp_min_c",
-            "region": region,
-            "value": raw["daily"]["temperature_2m_min"][i],
-            "meta": {"source_var": "temperature_2m_min"}
-        })
-        records.append({
-            "date": d,
-            "indicator": "precip_mm",
-            "region": region,
-            "value": raw["daily"]["precipitation_sum"][i],
-            "meta": {"source_var": "precipitation_sum"}
-        })
+        for var in DAILY_VARS:
+            values = daily.get(var, [])
+            if i >= len(values) or values[i] is None:
+                continue
+            indicator = {
+                "temperature_2m_max": "temp_max_c",
+                "temperature_2m_min": "temp_min_c",
+                "precipitation_sum": "precip_mm",
+            }[var]
+            rows.append({
+                "date": d,
+                "indicator": indicator,
+                "region": region,
+                "value": values[i],
+                "meta": {"source_var": var},
+            })
+    return pd.DataFrame(rows)
 
-    return pd.DataFrame(records)
+
+def run(days_back: int = ROLLING_WINDOW_DAYS) -> int:
+    end = date.today() - timedelta(days=1)
+    start = end - timedelta(days=days_back)
+
+    frames = []
+    failures = []
+    for c in CITIES:
+        try:
+            raw = fetch_weather(c["lat"], c["lon"], start.isoformat(), end.isoformat())
+            frames.append(normalize(raw, c["region"]))
+        except Exception as e:
+            failures.append(f"{c['city']}: {e}")
+
+    df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    n = load_observations(df, source=SOURCE)
+
+    if failures:
+        log_ingestion(SOURCE, "partial" if n else "fail", n, "; ".join(failures)[:2000])
+    else:
+        log_ingestion(SOURCE, "success", n, f"{len(CITIES)} cities, {start} to {end}")
+
+    return n
+
 
 if __name__ == "__main__":
-    # Pull for Jan 2024 Abuja (lat/lon)
-    start = date(2024, 1, 1)
-    end = date(2024, 1, 31)
-    raw = fetch_weather(lat=9.05785, lon=7.49508, start=start.isoformat(), end=end.isoformat())
-    df = normalize(raw, "NG-ABJ")
-
-    try:
-        load_to_db(df, table="weather_daily", source=SOURCE, schema="core")
-        log_ingestion(SOURCE, "success", len(df))
-        print(f"✅ Weather data loaded ({len(df)} rows)")
-    except Exception as e:
-        log_ingestion(SOURCE, "failed", len(df), str(e))
-        raise
+    count = run()
+    print(f"Weather: {count} rows upserted into core.observations")

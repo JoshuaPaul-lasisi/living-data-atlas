@@ -1,95 +1,89 @@
-from datetime import datetime, timezone
-from sqlalchemy import create_engine, text
-import pandas as pd
-import os
-from dotenv import load_dotenv
 import json
+import os
+from datetime import datetime, timezone
 from pathlib import Path
 
-# Load environment variables from .env
+import pandas as pd
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
+
 BASE_DIR = Path(__file__).resolve().parent.parent
-dotenv_path = BASE_DIR/".env"
-load_dotenv(dotenv_path=dotenv_path)
+load_dotenv(dotenv_path=BASE_DIR / ".env")
 
-# Read DB connection params
-DB_USER = os.getenv("POSTGRES_USER")
-DB_PASS = os.getenv("POSTGRES_PASSWORD")
-DB_NAME = os.getenv("POSTGRES_DB")
-DB_PORT = os.getenv("POSTGRES_PORT", "5433") 
-DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-if not all([DB_USER, DB_PASS, DB_NAME]):
-    # Fail early if credentials are missing
-    raise RuntimeError("❌ Database credentials are missing. Check your .env file.")
+if DATABASE_URL:
+    # Supabase (or any Postgres) connection string; force the psycopg2 driver.
+    if DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+else:
+    # Local docker-compose fallback for dev without touching the cloud DB.
+    db_user = os.getenv("POSTGRES_USER")
+    db_pass = os.getenv("POSTGRES_PASSWORD")
+    db_name = os.getenv("POSTGRES_DB")
+    db_host = os.getenv("POSTGRES_HOST", "localhost")
+    db_port = os.getenv("POSTGRES_PORT", "5433")
+    if not all([db_user, db_pass, db_name]):
+        raise RuntimeError(
+            "Set DATABASE_URL (Supabase) or POSTGRES_USER/PASSWORD/DB (local dev) in .env"
+        )
+    DATABASE_URL = f"postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
 
-# Shared SQLAlchemy engine (Postgres)
-engine = create_engine(
-    f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-)
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
-# Centralized access to API keys
 OPENAQ_API_KEY = os.getenv("OPENAQ_API_KEY")
 
+UPSERT_OBSERVATIONS = text("""
+    INSERT INTO core.observations (date, indicator, region, value, source, meta, updated_at)
+    VALUES (:date, :indicator, :region, :value, :source, :meta, :updated_at)
+    ON CONFLICT (date, indicator, region, source) DO UPDATE
+    SET value = EXCLUDED.value,
+        meta = EXCLUDED.meta,
+        updated_at = EXCLUDED.updated_at
+""")
 
-def load_to_db(df: pd.DataFrame, table: str, source: str, schema: str = "core"):
+
+def load_observations(df: pd.DataFrame, source: str) -> int:
     """
-    Insert a DataFrame into a Postgres table with upsert behavior.
+    Upsert rows into core.observations, the single fact table every loader writes to.
 
     Args:
-        df (pd.DataFrame): Data to insert. Must contain:
-            - date, indicator, region, value, meta
-        table (str): Target table name.
-        source (str): Source label (used in table + logs).
-        schema (str): Target schema. Defaults to "core".
+        df: must contain columns date, indicator, region, value, and optionally meta (dict).
+        source: label identifying the loader/API this data came from.
 
-    Notes:
-        - Uses `ON CONFLICT` to update existing rows (deduplication).
-        - Automatically updates the `updated_at` timestamp.
+    Returns:
+        Number of rows upserted.
     """
+    if df.empty:
+        return 0
+
+    now = datetime.now(timezone.utc)
+    records = [
+        {
+            "date": row["date"],
+            "indicator": row["indicator"],
+            "region": row["region"],
+            "value": None if pd.isna(row["value"]) else float(row["value"]),
+            "source": source,
+            "meta": json.dumps(row.get("meta") or {}),
+            "updated_at": now,
+        }
+        for _, row in df.iterrows()
+    ]
+
     with engine.begin() as conn:
-        for _, row in df.iterrows():
-            stmt = text(f"""
-                INSERT INTO {schema}.{table} (date, indicator, region, value, source, meta)
-                VALUES (:date, :indicator, :region, :value, :source, :meta)
-                ON CONFLICT (date, indicator, region) DO UPDATE
-                SET value = EXCLUDED.value,
-                    source = EXCLUDED.source,
-                    meta = EXCLUDED.meta,
-                    updated_at = :updated_at
-            """)
-            conn.execute(stmt, {
-                "date": row["date"],
-                "indicator": row["indicator"],
-                "region": row["region"],
-                "value": row["value"],
-                "source": source,
-                "meta": json.dumps(row.get("meta", {})),
-                "updated_at": datetime.now(timezone.utc)
-            })
+        conn.execute(UPSERT_OBSERVATIONS, records)
+
+    return len(records)
 
 
 def log_ingestion(source: str, status: str, records: int, message: str = ""):
-    """
-    Log the outcome of a data ingestion run into `ops.ingestion_log`.
-
-    Args:
-        source (str): Data source name (e.g. "World Bank").
-        status (str): "success" or "fail".
-        records (int): Number of records processed.
-        message (str): Optional extra details.
-
-    Notes:
-        - Helps track pipeline runs across different data sources.
-        - `ops.ingestion_log` should exist with proper schema.
-    """
+    """Record the outcome of an ingestion run into ops.ingestion_log."""
     with engine.begin() as conn:
-        stmt = text("""
-            INSERT INTO ops.ingestion_log (source, status, records, message)
-            VALUES (:source, :status, :records, :message)
-        """)
-        conn.execute(stmt, {
-            "source": source,
-            "status": status,
-            "records": records,
-            "message": message
-        })
+        conn.execute(
+            text("""
+                INSERT INTO ops.ingestion_log (source, status, records, message)
+                VALUES (:source, :status, :records, :message)
+            """),
+            {"source": source, "status": status, "records": records, "message": message[:2000]},
+        )

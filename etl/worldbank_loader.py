@@ -1,80 +1,61 @@
-import requests
 import pandas as pd
-from etl_utils import load_to_db, log_ingestion
+import requests
 
-# Base World Bank API template (REST endpoint)
-WORLD_BANK_API = "http://api.worldbank.org/v2/country/{country}/indicator/{indicator}?format=json&per_page=10000"
+from config import WORLDBANK_INDICATORS
+from etl_utils import load_observations, log_ingestion
 
-def fetch_worldbank(country="NG", indicator="NY.GDP.MKTP.CD"):
-    """
-    Fetch raw indicator data directly from the World Bank API.
+WORLD_BANK_API = "https://api.worldbank.org/v2/country/{country}/indicator/{indicator}?format=json&per_page=20000"
+SOURCE = "World Bank"
 
-    Args:
-        country (str): ISO country code. Defaults to Nigeria ("NG").
-        indicator (str): Indicator code to pull. Defaults to GDP in current USD.
 
-    Returns:
-        list: JSON payload (second element of response) containing data points.
-
-    Notes:
-        - The API returns a list of yearly values with country metadata.
-        - If request fails, this will raise an HTTPError.
-    """
+def fetch_worldbank(indicator: str, country: str = "NG") -> list:
+    """Fetch raw indicator data directly from the World Bank API."""
     url = WORLD_BANK_API.format(country=country, indicator=indicator)
-    resp = requests.get(url)
+    resp = requests.get(url, timeout=30)
     resp.raise_for_status()
-    data = resp.json()[1]
-    return data
+    payload = resp.json()
+    if len(payload) < 2 or payload[1] is None:
+        return []
+    return payload[1]
 
 
-def normalize(data, indicator_name):
-    """
-    Transform raw World Bank JSON into a structured DataFrame.
-
-    Args:
-        data (list): Raw data pulled from World Bank API.
-        indicator_name (str): Short label for indicator (used in DB).
-
-    Returns:
-        pd.DataFrame: Cleaned data with standardized schema:
-            - date: YYYY-01-01 (as string, to make it daily-compatible)
-            - indicator: name we assign (e.g. "gdp_usd")
-            - region: country code
-            - value: float numeric value
-            - meta: JSON with extra context (e.g. indicator ID)
-    """
+def normalize(data: list, indicator_name: str) -> pd.DataFrame:
+    """Transform raw World Bank JSON into core.observations rows (one per year)."""
     rows = []
     for d in data:
-        if d["value"] is not None:  # Skip missing years
-            rows.append({
-                "date": f"{d['date']}-01-01",  # fake daily granularity (January 1st)
-                "indicator": indicator_name,
-                "region": d["country"]["id"],
-                "value": float(d["value"]),
-                "meta": {"indicator": d["indicator"]["id"]}
-            })
+        if d["value"] is None:
+            continue
+        rows.append({
+            "date": f"{d['date']}-01-01",
+            "indicator": indicator_name,
+            "region": d["country"]["id"],
+            "value": float(d["value"]),
+            "meta": {"wb_indicator_code": d["indicator"]["id"]},
+        })
     return pd.DataFrame(rows)
 
 
+def run(country: str = "NG") -> int:
+    frames = []
+    failures = []
+    for wb_code, indicator_name in WORLDBANK_INDICATORS.items():
+        try:
+            raw = fetch_worldbank(wb_code, country=country)
+            frames.append(normalize(raw, indicator_name))
+        except Exception as e:
+            failures.append(f"{wb_code}: {e}")
+
+    df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    n = load_observations(df, source=SOURCE)
+
+    if failures:
+        log_ingestion(SOURCE, "partial" if n else "fail", n, "; ".join(failures)[:2000])
+    else:
+        log_ingestion(SOURCE, "success", n, f"{len(WORLDBANK_INDICATORS)} indicators loaded")
+
+    return n
+
+
 if __name__ == "__main__":
-    # Ingestion routine: fetch → normalize → load → log
-    source = "World Bank"
-    try:
-        # Step 1: Pull GDP data for Nigeria
-        raw = fetch_worldbank(country="NG", indicator="NY.GDP.MKTP.CD")
-        
-        # Step 2: Normalize into a tabular DataFrame
-        df = normalize(raw, "gdp_usd")
-
-        # Step 3: Push into Postgres (core.econ_daily)
-        load_to_db(df, table="econ_daily", source=source, schema="core")
-
-        # Step 4: Log the success
-        log_ingestion(source, "success", len(df), "GDP loaded")
-
-        print(f"✅ {source} data loaded into core.econ_daily")
-
-    except Exception as e:
-        # Catch errors, log as fail, and bubble it up
-        log_ingestion(source, "fail", 0, str(e))
-        raise
+    count = run()
+    print(f"World Bank: {count} rows upserted into core.observations")
