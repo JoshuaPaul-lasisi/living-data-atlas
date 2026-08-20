@@ -146,10 +146,27 @@ search results, not a live fetch.
   than hardcoding column names, and logs a clear failure to
   `ops.ingestion_log` ("could not locate a recognizable USD rate row")
   instead of silently loading garbage if the page doesn't match what was
-  expected. This is the one loader that genuinely needs a real-world
-  verify/fix pass — watch its first few runs in the "Pipeline Health" tab.
-  If it's failing, the fix is almost always in `_find_rate_table`/`_find_col`
-  in `cbn_loader.py`, informed by what the actual page looks like.
+  expected.
+
+### First live run results
+
+Once actually run on GitHub Actions (real network, unlike this dev session),
+World Bank, weather, air quality, and NGX all succeeded on the first try.
+Two real bugs turned up, both fixed same-day:
+
+- **CBN**: failed with `FileNotFoundError: No such file or directory:
+  <!DOCTYPE html>...`. Not a page-structure problem at all — a pandas API
+  contract issue: recent pandas versions require a literal HTML string passed
+  to `pd.read_html()` to be wrapped in `io.StringIO()`, otherwise it's
+  treated as a file path. Fixed by wrapping `r.text` in `io.StringIO()`
+  before parsing. The table-detection heuristics themselves were never
+  actually exercised against the real page yet — that's still open.
+- **NGX**: failed with `401 Unauthorized` on the index-history endpoint,
+  contradicting what the web-search summary said about it being public/keyless.
+  Confirms the limit of researching an API via search snippets instead of
+  its real docs page — this session couldn't fetch `ngxpulse.ng/api` directly
+  to check. Needs a human to check the actual docs page for the real auth
+  requirement (API key header? signup flow?) before this loader can work.
 - **Data-quality checks**: `etl/quality.py` checks every loaded value against
   a plausible `(low, high)` range per indicator (`config.QUALITY_BOUNDS`) and
   writes violations into `core.alerts` — the table that existed in the schema

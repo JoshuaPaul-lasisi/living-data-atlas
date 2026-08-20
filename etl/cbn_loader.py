@@ -5,6 +5,7 @@ loader starts failing, check the page manually and update _find_rate_table /
 _find_col below. See docs/PROCESS.md for why this one is higher-risk than
 the other loaders.
 """
+import io
 from datetime import date
 
 import pandas as pd
@@ -21,7 +22,7 @@ def fetch_rate_tables() -> list:
     """Fetch and parse all HTML tables on the CBN exchange-rate page."""
     r = SESSION.get(URL, timeout=30)
     r.raise_for_status()
-    return pd.read_html(r.text)
+    return pd.read_html(io.StringIO(r.text))
 
 
 def _find_rate_table(tables: list) -> pd.DataFrame | None:
