@@ -14,30 +14,32 @@ from when this started as a local Docker project.
 
 ```
 World Bank API ─┐
-Open-Meteo API  ─┼─► etl/*_loader.py ─► core.observations (Supabase Postgres)
+Open-Meteo API  ─┼─► etl/*_loader.py ─► core.observations (Neon Postgres)
 OpenAQ API      ─┘         ▲                      │
                             │                      ▼
               GitHub Actions (daily cron)    app.py (Streamlit Cloud)
 ```
 
-- **Database**: [Supabase](https://supabase.com) Postgres. Schema in `sql/schema.sql`.
+- **Database**: [Neon](https://neon.tech) Postgres — serverless, scales to
+  zero, and auto-resumes on the next connection (no manual "unpause" step,
+  unlike some free-tier providers). Schema in `sql/schema.sql`.
   Everything lands in a single table, `core.observations` — one row per
   `(date, indicator, region, source)`. Adding a new data source never needs a
   migration, just a new `indicator` name.
 - **Ingestion**: `.github/workflows/etl.yml` runs the three loaders in
   `etl/` daily via GitHub Actions cron. No server of yours needs to be running.
-- **Dashboard**: `app.py`, a Streamlit app reading straight from Supabase,
+- **Dashboard**: `app.py`, a Streamlit app reading straight from Neon,
   deployed on Streamlit Community Cloud.
 - **Monitoring**: every loader run writes a row to `ops.ingestion_log`,
   visible in the dashboard's "Pipeline Health" tab.
 
 ## Setup
 
-### 1. Supabase
+### 1. Neon
 
-1. Create a project at supabase.com.
-2. In the SQL Editor, run `sql/schema.sql`.
-3. Project Settings → Database → Connection string → URI. This is your `DATABASE_URL`.
+1. Create a project at neon.tech.
+2. In the SQL editor (or via `psql`), run `sql/schema.sql`.
+3. Dashboard → Connection string (make sure it has `?sslmode=require`). This is your `DATABASE_URL`.
 
 ### 2. Local development
 
@@ -87,7 +89,7 @@ DATABASE_URL = "postgresql://..."
 
 ```
 etl/                  loaders + shared config/db utilities
-sql/schema.sql         Supabase schema (core.observations, core.alerts, ops.ingestion_log)
+sql/schema.sql         Neon/Postgres schema (core.observations, core.alerts, ops.ingestion_log)
 .github/workflows/     scheduled ETL runs
 app.py                 Streamlit dashboard
 docs/PROCESS.md         architecture decisions and reasoning

@@ -80,7 +80,7 @@ st.caption("A continuously updated view of Nigeria's economy, weather, and air q
 if get_engine() is None:
     st.warning(
         "No DATABASE_URL configured. Set it in `.streamlit/secrets.toml` locally, "
-        "or in the app's Secrets on Streamlit Community Cloud, pointing at your Supabase project."
+        "or in the app's Secrets on Streamlit Community Cloud, pointing at your Neon project."
     )
     st.stop()
 

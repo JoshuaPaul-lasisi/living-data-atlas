@@ -36,11 +36,18 @@ The stated goal for this pass was to stop depending on a machine at home
 (unreliable power/internet) and to stop hand-operating the pipeline. That
 rules out "run Postgres and a cron job on my laptop" outright. The
 alternative needed to be: free or near-free, needs no server you manage, and
-usable with accounts you already have (Supabase, Streamlit, Vercel).
+usable with accounts you already have (Streamlit, Vercel) or can create in
+minutes (Neon).
 
-- **Supabase over self-hosted Postgres**: same Postgres underneath, so the
+- **Neon over self-hosted Postgres**: same Postgres underneath, so the
   schema and SQLAlchemy code don't change in kind — only the connection
-  string. Free tier is a real always-on Postgres instance, not a toy.
+  string. Free tier is serverless (scales to zero, auto-resumes on the next
+  connection). We tried Supabase first, but its free tier auto-pauses a
+  project after a week of inactivity and requires a manual "unpause" click
+  in its dashboard — a bad fit for a pipeline meant to run unattended, since
+  a paused DB fails silently until someone notices. Neon's auto-resume needs
+  no manual step. Supabase also bundles auth/storage/a table UI that this
+  project doesn't use, so nothing was lost in the switch.
 - **GitHub Actions over a hosted scheduler (Airflow, a VPS cron, etc.)**:
   the code already lives in a GitHub repo; Actions' free `schedule:` trigger
   needs no separate account, no server, and gives real CI/CD exposure (the

@@ -13,7 +13,7 @@ load_dotenv(dotenv_path=BASE_DIR / ".env")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if DATABASE_URL:
-    # Supabase (or any Postgres) connection string; force the psycopg2 driver.
+    # Neon (or any Postgres) connection string; force the psycopg2 driver.
     if DATABASE_URL.startswith("postgresql://"):
         DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 else:
@@ -25,7 +25,7 @@ else:
     db_port = os.getenv("POSTGRES_PORT", "5433")
     if not all([db_user, db_pass, db_name]):
         raise RuntimeError(
-            "Set DATABASE_URL (Supabase) or POSTGRES_USER/PASSWORD/DB (local dev) in .env"
+            "Set DATABASE_URL (Neon) or POSTGRES_USER/PASSWORD/DB (local dev) in .env"
         )
     DATABASE_URL = f"postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
 
