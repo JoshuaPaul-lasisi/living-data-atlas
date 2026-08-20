@@ -4,8 +4,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+import requests
 from dotenv import load_dotenv
+from requests.adapters import HTTPAdapter
 from sqlalchemy import create_engine, text
+from urllib3.util import Retry
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(dotenv_path=BASE_DIR / ".env")
@@ -32,6 +35,27 @@ else:
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 OPENAQ_API_KEY = os.getenv("OPENAQ_API_KEY")
+
+
+def http_session() -> requests.Session:
+    """
+    Shared requests.Session with retry/backoff for transient failures
+    (rate limits, 5xx, connection resets) so a flaky upstream API doesn't
+    kill an entire loader run.
+    """
+    session = requests.Session()
+    retry = Retry(
+        total=4,
+        backoff_factor=1.5,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"],
+        respect_retry_after_header=True,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
 
 UPSERT_OBSERVATIONS = text("""
     INSERT INTO core.observations (date, indicator, region, value, source, meta, updated_at)

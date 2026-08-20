@@ -54,6 +54,24 @@ def query_observations(indicators: tuple) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300)
+def query_alerts(limit: int = 200) -> pd.DataFrame:
+    engine = get_engine()
+    if engine is None:
+        return pd.DataFrame()
+    with engine.connect() as conn:
+        return pd.read_sql(
+            text("""
+                SELECT ts, signal, severity, details
+                FROM core.alerts
+                ORDER BY ts DESC
+                LIMIT :limit
+            """),
+            conn,
+            params={"limit": limit},
+        )
+
+
+@st.cache_data(ttl=300)
 def query_ingestion_log() -> pd.DataFrame:
     engine = get_engine()
     if engine is None:
@@ -84,8 +102,8 @@ if get_engine() is None:
     )
     st.stop()
 
-tab_overview, tab_econ, tab_weather, tab_air, tab_health = st.tabs(
-    ["Overview", "Economy", "Weather", "Air Quality", "Pipeline Health"]
+tab_overview, tab_econ, tab_weather, tab_air, tab_alerts, tab_health = st.tabs(
+    ["Overview", "Economy", "Weather", "Air Quality", "Alerts", "Pipeline Health"]
 )
 
 with tab_overview:
@@ -161,6 +179,16 @@ with tab_air:
         fig.update_layout(yaxis_title="µg/m³", xaxis_title=None)
         st.plotly_chart(fig, use_container_width=True)
         table_view(df_a, "air")
+
+with tab_alerts:
+    alerts = query_alerts()
+    if alerts.empty:
+        st.success("No data-quality alerts raised.")
+    else:
+        st.caption("Values loaders flagged as outside a plausible range — check the source, not necessarily wrong.")
+        details = pd.json_normalize(alerts["details"].apply(lambda d: d if isinstance(d, dict) else {}))
+        view = pd.concat([alerts[["ts", "signal", "severity"]].reset_index(drop=True), details], axis=1)
+        st.dataframe(view, use_container_width=True, hide_index=True)
 
 with tab_health:
     log = query_ingestion_log()

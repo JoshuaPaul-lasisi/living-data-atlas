@@ -96,12 +96,38 @@ assertions run during this build) before being wired to the database.
 
 ## Known limitations / next steps
 
-- No backfill script yet — loaders only pull recent/current data. Historical
-  weather and air-quality backfill would need a separate one-off script.
 - GitHub Actions free-tier cron can run a few minutes late; not a problem
   for daily granularity.
-- `core.alerts` exists in the schema but nothing writes to it yet — that's
-  the natural home for an anomaly-detection layer once there's enough data
-  in `core.observations` to detect anomalies against.
 - CBN and NGX (the financial-market sources from the original plan) aren't
   wired up yet; they'd follow the same loader pattern.
+
+## Robustness pass (first "make it robust" iteration)
+
+Once the pipeline was live, three gaps became the priority: a broken loader
+was invisible (green CI, silent failure), there was no way to backfill
+history, and nothing checked whether a value was even plausible before it
+landed in the database.
+
+- **Retries**: `etl_utils.http_session()` wraps every loader's HTTP calls in
+  a `requests.Session` with backoff on 429/5xx, so a transient rate limit or
+  a dropped connection doesn't kill an entire run.
+- **Visible CI failures**: each loader step in `etl.yml` still runs
+  independently (`continue-on-error: true`, so one broken API doesn't block
+  the other two), but a final step now checks all three outcomes and fails
+  the job if any loader failed. Before this change, `continue-on-error`
+  meant the workflow stayed green even when every loader failed — the only
+  way to notice was opening the dashboard and seeing stale data. Now GitHub's
+  own failed-workflow notification does that job.
+- **Backfill**: `weather_loader.py` takes `--start`/`--end` for a one-off
+  historical pull, chunked into ≤31-day requests (the Open-Meteo range limit
+  noted in `process_log.txt`) via `fetch_weather_range()`. World Bank already
+  pulls full history by nature of its API; OpenAQ's "latest reading" model
+  doesn't have a meaningful backfill equivalent yet.
+- **Data-quality checks**: `etl/quality.py` checks every loaded value against
+  a plausible `(low, high)` range per indicator (`config.QUALITY_BOUNDS`) and
+  writes violations into `core.alerts` — the table that existed in the schema
+  from the start but nothing wrote to. This catches unit errors and API
+  glitches (e.g. a stray 999°C reading), not genuine extremes; it's
+  intentionally generous rather than trying to be a real anomaly detector.
+  A day-over-day jump detector (compare against the last known value per
+  indicator/region) would be the natural next layer here.

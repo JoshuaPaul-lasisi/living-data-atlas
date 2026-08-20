@@ -21,3 +21,21 @@ WORLDBANK_INDICATORS = {
 }
 
 OPENAQ_RADIUS_M = 25000
+
+# Physically/economically plausible (low, high) ranges per indicator. Values
+# outside these bounds get flagged into core.alerts rather than silently
+# trusted -- generous on purpose, this catches unit/parsing errors and API
+# glitches, not genuine extreme-but-real readings.
+QUALITY_BOUNDS = {
+    "gdp_usd": (0, 5_000_000_000_000),
+    "inflation_cpi_pct": (-20, 200),
+    "unemployment_pct": (0, 100),
+    "population_total": (1_000_000, 500_000_000),
+    "poverty_headcount_pct": (0, 100),
+    "fx_rate_usd_ngn": (0, 10_000),
+    "temp_max_c": (-5, 55),
+    "temp_min_c": (-10, 45),
+    "precip_mm": (0, 500),
+    "pm25": (0, 1000),
+    "pm10": (0, 2000),
+}

@@ -2,14 +2,15 @@ import time
 from datetime import datetime, timezone
 
 import pandas as pd
-import requests
 
 from config import CITIES, OPENAQ_RADIUS_M
-from etl_utils import OPENAQ_API_KEY, load_observations, log_ingestion
+from etl_utils import OPENAQ_API_KEY, http_session, load_observations, log_ingestion
+from quality import flag_out_of_range
 
 BASE_URL = "https://api.openaq.org/v3"
 SOURCE = "OpenAQ"
 REQUEST_PAUSE_S = 0.3  # be polite to the free-tier rate limit
+SESSION = http_session()
 
 
 def _headers():
@@ -21,7 +22,7 @@ def fetch_locations(lat: float, lon: float, radius: int = OPENAQ_RADIUS_M, limit
     results, page = [], 1
     while True:
         params = {"coordinates": f"{lat},{lon}", "radius": radius, "limit": limit, "page": page}
-        r = requests.get(f"{BASE_URL}/locations", params=params, headers=_headers(), timeout=30)
+        r = SESSION.get(f"{BASE_URL}/locations", params=params, headers=_headers(), timeout=30)
         r.raise_for_status()
         batch = r.json().get("results", [])
         results.extend(batch)
@@ -34,7 +35,7 @@ def fetch_locations(lat: float, lon: float, radius: int = OPENAQ_RADIUS_M, limit
 
 def fetch_latest(location_id: int) -> list:
     """Fetch the latest reading per sensor for a given location."""
-    r = requests.get(f"{BASE_URL}/locations/{location_id}/latest", headers=_headers(), timeout=30)
+    r = SESSION.get(f"{BASE_URL}/locations/{location_id}/latest", headers=_headers(), timeout=30)
     r.raise_for_status()
     return r.json().get("results", [])
 
@@ -95,11 +96,15 @@ def run() -> int:
 
     df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     n = load_observations(df, source=SOURCE)
+    n_alerts = flag_out_of_range(df, source=SOURCE)
 
+    note = f"{len(CITIES)} cities scanned"
+    if n_alerts:
+        note += f"; {n_alerts} quality alerts raised"
     if failures:
         log_ingestion(SOURCE, "partial" if n else "fail", n, "; ".join(failures)[:2000])
     else:
-        log_ingestion(SOURCE, "success", n, f"{len(CITIES)} cities scanned")
+        log_ingestion(SOURCE, "success", n, note)
 
     return n
 
