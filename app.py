@@ -102,8 +102,8 @@ if get_engine() is None:
     )
     st.stop()
 
-tab_overview, tab_econ, tab_weather, tab_air, tab_alerts, tab_health = st.tabs(
-    ["Overview", "Economy", "Weather", "Air Quality", "Alerts", "Pipeline Health"]
+tab_overview, tab_econ, tab_weather, tab_air, tab_markets, tab_alerts, tab_health = st.tabs(
+    ["Overview", "Economy", "Weather", "Air Quality", "Markets", "Alerts", "Pipeline Health"]
 )
 
 with tab_overview:
@@ -179,6 +179,33 @@ with tab_air:
         fig.update_layout(yaxis_title="µg/m³", xaxis_title=None)
         st.plotly_chart(fig, use_container_width=True)
         table_view(df_a, "air")
+
+with tab_markets:
+    df_fx = query_observations(("cbn_fx_usd_ngn",))
+    if df_fx.empty:
+        st.info("No CBN FX rate yet.")
+    else:
+        fig = px.line(
+            df_fx, x="date", y="value",
+            color_discrete_sequence=CATEGORICAL,
+            title="CBN official rate (NGN per USD)", markers=True,
+        )
+        fig.update_layout(yaxis_title="NGN per USD", xaxis_title=None, hovermode="x unified")
+        st.plotly_chart(fig, use_container_width=True)
+        table_view(df_fx, "cbn_fx")
+
+    df_ngx = query_observations(("ngx_asi",))
+    if df_ngx.empty:
+        st.info("No NGX All-Share Index data yet.")
+    else:
+        fig2 = px.line(
+            df_ngx, x="date", y="value",
+            color_discrete_sequence=CATEGORICAL,
+            title="NGX All-Share Index", markers=True,
+        )
+        fig2.update_layout(yaxis_title="Index value", xaxis_title=None, hovermode="x unified")
+        st.plotly_chart(fig2, use_container_width=True)
+        table_view(df_ngx, "ngx")
 
 with tab_alerts:
     alerts = query_alerts()

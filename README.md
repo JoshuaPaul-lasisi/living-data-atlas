@@ -1,10 +1,11 @@
 # Living Data Atlas
 
-A continuously updated data platform for Nigeria: economic, weather, and
-air-quality data pulled from public APIs, stored in one long-format fact
-table, and served through a live dashboard. Runs entirely on free-tier cloud
-infrastructure, so it doesn't depend on Nigeria's power or internet — the
-pipeline runs on GitHub's servers, not yours.
+A continuously updated data platform for Nigeria: economic, weather,
+air-quality, and financial-market data pulled from public sources, stored in
+one long-format fact table, and served through a live dashboard. Runs
+entirely on free-tier cloud infrastructure, so it doesn't depend on
+Nigeria's power or internet — the pipeline runs on GitHub's servers, not
+yours.
 
 See `docs/PROCESS.md` for the full architecture writeup and the reasoning
 behind each decision. `process_log.txt` is the original day-by-day journal
@@ -14,9 +15,10 @@ from when this started as a local Docker project.
 
 ```
 World Bank API ─┐
-Open-Meteo API  ─┼─► etl/*_loader.py ─► core.observations (Neon Postgres)
-OpenAQ API      ─┘         ▲                      │
-                            │                      ▼
+Open-Meteo API  ─┤
+OpenAQ API      ─┼─► etl/*_loader.py ─► core.observations (Neon Postgres)
+NGX Pulse API   ─┤         ▲                      │
+CBN (scraped)   ─┘         │                      ▼
               GitHub Actions (daily cron)    app.py (Streamlit Cloud)
 ```
 
@@ -40,6 +42,12 @@ OpenAQ API      ─┘         ▲                      │
   notification settings. Implausible values (e.g. a negative population, a
   55°C+ reading) get flagged into `core.alerts`, visible in the dashboard's
   "Alerts" tab.
+- **Data sources**: World Bank (economic indicators), Open-Meteo (weather),
+  OpenAQ (air quality), [NGX Pulse](https://ngxpulse.ng/api) (stock market
+  index — public API, no key), and CBN (official USD/NGN rate). CBN has no
+  public API, so `cbn_loader.py` scrapes their official rate page — the most
+  likely loader to need a fix if CBN changes their page structure; check
+  `ops.ingestion_log` / the "Pipeline Health" tab if it starts failing.
 
 ## Setup
 
@@ -58,6 +66,8 @@ pip install -r requirements.txt
 python etl/worldbank_loader.py
 python etl/weather_loader.py
 python etl/airquality_loader.py
+python etl/ngx_loader.py
+python etl/cbn_loader.py
 
 streamlit run app.py
 ```

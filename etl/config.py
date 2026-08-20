@@ -38,4 +38,6 @@ QUALITY_BOUNDS = {
     "precip_mm": (0, 500),
     "pm25": (0, 1000),
     "pm10": (0, 2000),
+    "cbn_fx_usd_ngn": (0, 10_000),
+    "ngx_asi": (0, 1_000_000),
 }

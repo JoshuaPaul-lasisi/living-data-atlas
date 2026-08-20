@@ -98,8 +98,6 @@ assertions run during this build) before being wired to the database.
 
 - GitHub Actions free-tier cron can run a few minutes late; not a problem
   for daily granularity.
-- CBN and NGX (the financial-market sources from the original plan) aren't
-  wired up yet; they'd follow the same loader pattern.
 
 ## Robustness pass (first "make it robust" iteration)
 
@@ -123,6 +121,35 @@ landed in the database.
   noted in `process_log.txt`) via `fetch_weather_range()`. World Bank already
   pulls full history by nature of its API; OpenAQ's "latest reading" model
   doesn't have a meaningful backfill equivalent yet.
+
+## Broader data coverage: NGX and CBN
+
+The original plan called for CBN and NGX as market/finance sources. Both
+needed research this session couldn't fully verify live: this environment's
+network egress is locked to a small allowlist (GitHub, PyPI, npm, Anthropic),
+so even `WebFetch` couldn't reach `ngxgroup.com`, `ngxpulse.ng`, or
+`cbn.gov.ng` to inspect them directly — everything below came from web
+search results, not a live fetch.
+
+- **NGX** (`ngx_loader.py`): NGX Pulse (`ngxpulse.ng/api`) documents a public,
+  keyless endpoint for index history — `/api/ngxdata/indices/{code}/history`,
+  returning `{success, code, name, history: [{date, value}]}`. This is
+  reasonably solid ground: it's documented, and the shape is simple. Starts
+  with just the All-Share Index (`ngx_asi`); add more codes to
+  `INDEX_CODES` in `ngx_loader.py` as needed (e.g. sector indices).
+- **CBN** (`cbn_loader.py`): CBN has no documented public API. The only
+  option is scraping their official rate page
+  (`cbn.gov.ng/rates/ExchRateByCurrency.html`), a legacy ASP-era page whose
+  exact table structure couldn't be confirmed from this session. The loader
+  is written defensively — it searches all tables on the page for one with
+  currency + rate columns (by substring match, not an exact schema) rather
+  than hardcoding column names, and logs a clear failure to
+  `ops.ingestion_log` ("could not locate a recognizable USD rate row")
+  instead of silently loading garbage if the page doesn't match what was
+  expected. This is the one loader that genuinely needs a real-world
+  verify/fix pass — watch its first few runs in the "Pipeline Health" tab.
+  If it's failing, the fix is almost always in `_find_rate_table`/`_find_col`
+  in `cbn_loader.py`, informed by what the actual page looks like.
 - **Data-quality checks**: `etl/quality.py` checks every loaded value against
   a plausible `(low, high)` range per indicator (`config.QUALITY_BOUNDS`) and
   writes violations into `core.alerts` — the table that existed in the schema

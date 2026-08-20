@@ -36,6 +36,16 @@ jobs:
         run: python etl/airquality_loader.py
         continue-on-error: true
 
+      - name: NGX loader
+        id: ngx
+        run: python etl/ngx_loader.py
+        continue-on-error: true
+
+      - name: CBN loader
+        id: cbn
+        run: python etl/cbn_loader.py
+        continue-on-error: true
+
       # Each loader runs independently above (one flaky API shouldn't block
       # the others), but the job must still go red overall on any failure so
       # GitHub's default failed-workflow notification actually fires --
@@ -49,11 +59,15 @@ jobs:
             echo "| World Bank | ${{ steps.worldbank.outcome }} |"
             echo "| Weather | ${{ steps.weather.outcome }} |"
             echo "| Air quality | ${{ steps.airquality.outcome }} |"
+            echo "| NGX | ${{ steps.ngx.outcome }} |"
+            echo "| CBN | ${{ steps.cbn.outcome }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${{ steps.worldbank.outcome }}" = "failure" ] || \
              [ "${{ steps.weather.outcome }}" = "failure" ] || \
-             [ "${{ steps.airquality.outcome }}" = "failure" ]; then
+             [ "${{ steps.airquality.outcome }}" = "failure" ] || \
+             [ "${{ steps.ngx.outcome }}" = "failure" ] || \
+             [ "${{ steps.cbn.outcome }}" = "failure" ]; then
             echo "At least one loader failed -- see the step logs above."
             exit 1
           fi
