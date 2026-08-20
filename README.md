@@ -32,6 +32,14 @@ OpenAQ API      ─┘         ▲                      │
   deployed on Streamlit Community Cloud.
 - **Monitoring**: every loader run writes a row to `ops.ingestion_log`,
   visible in the dashboard's "Pipeline Health" tab.
+- **Reliability**: HTTP calls retry with backoff on rate limits/5xx
+  (`etl_utils.http_session`); each loader runs independently in CI so one
+  broken API doesn't block the others, but the workflow still fails overall
+  if any loader fails, so GitHub's normal failed-run notifications fire —
+  make sure email notifications for failed workflows are on in your GitHub
+  notification settings. Implausible values (e.g. a negative population, a
+  55°C+ reading) get flagged into `core.alerts`, visible in the dashboard's
+  "Alerts" tab.
 
 ## Setup
 
@@ -55,6 +63,12 @@ streamlit run app.py
 ```
 
 `OPENAQ_API_KEY` comes from an account at openaq.org (API Keys section).
+
+To backfill historical weather instead of the usual rolling window:
+
+```bash
+python etl/weather_loader.py --start 2023-01-01 --end 2023-12-31
+```
 
 ### 3. GitHub Actions (scheduled ingestion)
 

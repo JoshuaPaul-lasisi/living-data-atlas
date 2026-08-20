@@ -22,13 +22,38 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: World Bank loader
+        id: worldbank
         run: python etl/worldbank_loader.py
         continue-on-error: true
 
       - name: Weather loader
+        id: weather
         run: python etl/weather_loader.py
         continue-on-error: true
 
       - name: Air quality loader
+        id: airquality
         run: python etl/airquality_loader.py
         continue-on-error: true
+
+      # Each loader runs independently above (one flaky API shouldn't block
+      # the others), but the job must still go red overall on any failure so
+      # GitHub's default failed-workflow notification actually fires --
+      # otherwise a broken loader fails silently forever.
+      - name: Check loader results
+        if: always()
+        run: |
+          {
+            echo "| Loader | Result |"
+            echo "|---|---|"
+            echo "| World Bank | ${{ steps.worldbank.outcome }} |"
+            echo "| Weather | ${{ steps.weather.outcome }} |"
+            echo "| Air quality | ${{ steps.airquality.outcome }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${{ steps.worldbank.outcome }}" = "failure" ] || \
+             [ "${{ steps.weather.outcome }}" = "failure" ] || \
+             [ "${{ steps.airquality.outcome }}" = "failure" ]; then
+            echo "At least one loader failed -- see the step logs above."
+            exit 1
+          fi
