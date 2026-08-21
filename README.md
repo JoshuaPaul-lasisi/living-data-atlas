@@ -44,10 +44,10 @@ CBN (scraped)   ─┘         │                      ▼
   "Alerts" tab.
 - **Data sources**: World Bank (economic indicators), Open-Meteo (weather),
   OpenAQ (air quality), [NGX Pulse](https://ngxpulse.ng/api) (stock market
-  index — public API, no key), and CBN (official USD/NGN rate). CBN has no
-  public API, so `cbn_loader.py` scrapes their official rate page — the most
-  likely loader to need a fix if CBN changes their page structure; check
-  `ops.ingestion_log` / the "Pipeline Health" tab if it starts failing.
+  index — needs a free API key, see below), and CBN (official USD/NGN rate).
+  CBN has no public API, so `cbn_loader.py` scrapes their official rate page
+  — the most likely loader to need a fix if CBN changes their page structure;
+  check `ops.ingestion_log` / the "Pipeline Health" tab if it starts failing.
 
 ## Setup
 
@@ -60,7 +60,7 @@ CBN (scraped)   ─┘         │                      ▼
 ### 2. Local development
 
 ```bash
-cp .env.example .env   # fill in DATABASE_URL and OPENAQ_API_KEY
+cp .env.example .env   # fill in DATABASE_URL, OPENAQ_API_KEY, NGXPULSE_API_KEY
 pip install -r requirements.txt
 
 python etl/worldbank_loader.py
@@ -73,6 +73,9 @@ streamlit run app.py
 ```
 
 `OPENAQ_API_KEY` comes from an account at openaq.org (API Keys section).
+`NGXPULSE_API_KEY` comes from the self-serve form at ngxpulse.ng/api
+(Personal/Learning tier keys are issued instantly); it's sent as an
+`X-API-Key` header.
 
 To backfill historical weather instead of the usual rolling window:
 
@@ -86,6 +89,7 @@ In the repo's Settings → Secrets and variables → Actions, add:
 
 - `DATABASE_URL`
 - `OPENAQ_API_KEY`
+- `NGXPULSE_API_KEY`
 
 The `ETL` workflow then runs daily at 03:00 UTC, or on demand via
 Actions → ETL → Run workflow.

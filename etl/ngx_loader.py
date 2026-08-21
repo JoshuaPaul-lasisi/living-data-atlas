@@ -1,22 +1,25 @@
 import pandas as pd
 
-from etl_utils import http_session, load_observations, log_ingestion
+from etl_utils import NGXPULSE_API_KEY, http_session, load_observations, log_ingestion
 from quality import flag_out_of_range
 
 BASE_URL = "https://ngxpulse.ng"
 SOURCE = "NGX Pulse"
 SESSION = http_session()
 
-# NGX Pulse's index-history endpoint is public (no key) for indices/ETFs.
 # code -> our indicator name. Add more NGX index codes here as needed.
 INDEX_CODES = {
     "ASI": "ngx_asi",
 }
 
 
+def _headers():
+    return {"X-API-Key": NGXPULSE_API_KEY, "Content-Type": "application/json"}
+
+
 def fetch_index_history(code: str) -> dict:
     """Fetch the full daily history for one NGX index."""
-    r = SESSION.get(f"{BASE_URL}/api/ngxdata/indices/{code}/history", timeout=30)
+    r = SESSION.get(f"{BASE_URL}/api/ngxdata/indices/{code}/history", headers=_headers(), timeout=30)
     r.raise_for_status()
     return r.json()
 

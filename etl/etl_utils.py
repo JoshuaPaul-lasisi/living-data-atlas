@@ -35,6 +35,7 @@ else:
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 OPENAQ_API_KEY = os.getenv("OPENAQ_API_KEY")
+NGXPULSE_API_KEY = os.getenv("NGXPULSE_API_KEY")
 
 
 def http_session() -> requests.Session:

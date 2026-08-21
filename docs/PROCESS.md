@@ -151,8 +151,8 @@ search results, not a live fetch.
 ### First live run results
 
 Once actually run on GitHub Actions (real network, unlike this dev session),
-World Bank, weather, air quality, and NGX all succeeded on the first try.
-Two real bugs turned up, both fixed same-day:
+World Bank, weather, and air quality all succeeded on the first try. NGX and
+CBN both failed, for two different reasons:
 
 - **CBN**: failed with `FileNotFoundError: No such file or directory:
   <!DOCTYPE html>...`. Not a page-structure problem at all — a pandas API
@@ -165,8 +165,10 @@ Two real bugs turned up, both fixed same-day:
   contradicting what the web-search summary said about it being public/keyless.
   Confirms the limit of researching an API via search snippets instead of
   its real docs page — this session couldn't fetch `ngxpulse.ng/api` directly
-  to check. Needs a human to check the actual docs page for the real auth
-  requirement (API key header? signup flow?) before this loader can work.
+  to check. Joshua checked the real docs page: every endpoint needs a key,
+  issued instantly via a self-serve form, sent as an `X-API-Key` header. Fixed
+  by adding `NGXPULSE_API_KEY` alongside `OPENAQ_API_KEY` in `etl_utils.py`
+  and sending it as that header in `ngx_loader.py`.
 - **Data-quality checks**: `etl/quality.py` checks every loaded value against
   a plausible `(low, high)` range per indicator (`config.QUALITY_BOUNDS`) and
   writes violations into `core.alerts` — the table that existed in the schema

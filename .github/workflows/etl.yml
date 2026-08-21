@@ -11,6 +11,7 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
+      NGXPULSE_API_KEY: ${{ secrets.NGXPULSE_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
